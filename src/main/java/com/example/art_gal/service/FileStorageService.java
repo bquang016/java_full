@@ -1,59 +1,39 @@
 package com.example.art_gal.service;
 
+import com.cloudinary.Cloudinary;
+import com.cloudinary.utils.ObjectUtils;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
+
 import java.io.IOException;
-import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
 public class FileStorageService {
 
-    private final Path rootLocation = Paths.get("src/main/resources/static/uploads");
+    private final Cloudinary cloudinary;
 
-    public FileStorageService() {
-        try {
-            Files.createDirectories(rootLocation);
-        } catch (IOException e) {
-            throw new RuntimeException("Could not initialize storage location", e);
-        }
+    public FileStorageService(Cloudinary cloudinary) {
+        this.cloudinary = cloudinary;
     }
 
     public String store(MultipartFile file, String subfolder) {
-        // Làm sạch tên file để tránh lỗi đường dẫn
-        String originalFilename = StringUtils.cleanPath(file.getOriginalFilename());
-        // Tạo tên file duy nhất để tránh bị ghi đè
-        String uniqueFilename = UUID.randomUUID().toString() + "_" + originalFilename;
+        if (file.isEmpty()) {
+            throw new RuntimeException("Không thể lưu trữ một file rỗng.");
+        }
 
         try {
-            if (file.isEmpty()) {
-                throw new RuntimeException("Failed to store empty file.");
-            }
-            
-            Path destinationFolder = rootLocation.resolve(subfolder);
-            
-            // Tạo thư mục con nếu chưa tồn tại
-            if (!Files.exists(destinationFolder)) {
-                Files.createDirectories(destinationFolder);
-            }
+            String publicId = subfolder + "/" + UUID.randomUUID().toString();
 
-            Path destinationFile = destinationFolder.resolve(uniqueFilename);
+            Map uploadResult = cloudinary.uploader().upload(file.getBytes(), ObjectUtils.asMap(
+                "public_id", publicId
+            ));
 
-            try (InputStream inputStream = file.getInputStream()) {
-                Files.copy(inputStream, destinationFile, StandardCopyOption.REPLACE_EXISTING);
-            }
-            
-            // --- ĐÂY LÀ DÒNG ĐÃ ĐƯỢC SỬA LẠI ---
-            // Trả về đường dẫn web-accessible một cách an toàn
-            return "/uploads/" + subfolder + "/" + uniqueFilename;
+            return uploadResult.get("secure_url").toString();
 
         } catch (IOException e) {
-            throw new RuntimeException("Failed to store file.", e);
+            throw new RuntimeException("Lỗi khi tải file lên Cloudinary.", e);
         }
     }
 }
